@@ -7,6 +7,7 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.biometric.BiometricPrompt.PromptInfo
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.receiveAsFlow
 
@@ -25,14 +26,21 @@ class BiometricPromptManager(
             BIOMETRIC_STRONG or DEVICE_CREDENTIAL
         } else BIOMETRIC_STRONG
 
+//        val promptInfo = PromptInfo.Builder()
+//            .setTitle(title)
+//            .setDescription(description)
+//            .setAllowedAuthenticators(authenticators)
+
         val promptInfo = PromptInfo.Builder()
             .setTitle(title)
             .setDescription(description)
-            .setAllowedAuthenticators(authenticators)
+            // Authenticate without requiring the user to press a "confirm"
+            // button after satisfying the biometric check
+            .setConfirmationRequired(false)
+//            .setAllowedAuthenticators(authenticators)
+            .setNegativeButtonText("Password")
 
-        if(Build.VERSION.SDK_INT < 30) {
-            promptInfo.setNegativeButtonText("Cancel")
-        }
+
 
         when(manager.canAuthenticate(authenticators)) {
             BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> {
@@ -50,12 +58,77 @@ class BiometricPromptManager(
             else -> Unit
         }
 
+        val executor = ContextCompat.getMainExecutor(activity)
         val prompt = BiometricPrompt(
             activity,
+            executor,
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                     super.onAuthenticationError(errorCode, errString)
-                    resultChannel.trySend(BiometricResult.AuthenticationError(errString.toString()))
+                    resultChannel.trySend(BiometricResult.AuthenticationError(errorCode, errString.toString()))
+                }
+
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    super.onAuthenticationSucceeded(result)
+                    resultChannel.trySend(BiometricResult.AuthenticationSuccess)
+                }
+
+                override fun onAuthenticationFailed() {
+                    super.onAuthenticationFailed()
+                    resultChannel.trySend(BiometricResult.AuthenticationFailed)
+                }
+            }
+        )
+        prompt.authenticate(promptInfo.build())
+    }
+
+    fun showWeakAuthPrompt(
+        title: String,
+        description: String
+    ) {
+        val manager = BiometricManager.from(activity)
+        val authenticators = DEVICE_CREDENTIAL
+
+//        val promptInfo = PromptInfo.Builder()
+//            .setTitle(title)
+//            .setDescription(description)
+//            .setAllowedAuthenticators(authenticators)
+
+        val promptInfo = PromptInfo.Builder()
+            .setTitle(title)
+            .setDescription(description)
+            // Authenticate without requiring the user to press a "confirm"
+            // button after satisfying the biometric check
+            .setConfirmationRequired(false)
+            .setAllowedAuthenticators(authenticators)
+
+
+
+
+        when(manager.canAuthenticate(authenticators)) {
+            BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE -> {
+                resultChannel.trySend(BiometricResult.HardwareUnavailable)
+                return
+            }
+            BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE -> {
+                resultChannel.trySend(BiometricResult.FeatureUnavailable)
+                return
+            }
+            BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED -> {
+                resultChannel.trySend(BiometricResult.AuthenticationNotSet)
+                return
+            }
+            else -> Unit
+        }
+
+        val executor = ContextCompat.getMainExecutor(activity)
+        val prompt = BiometricPrompt(
+            activity,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    super.onAuthenticationError(errorCode, errString)
+                    resultChannel.trySend(BiometricResult.AuthenticationError(errorCode, errString.toString()))
                 }
 
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -75,7 +148,7 @@ class BiometricPromptManager(
     sealed interface BiometricResult {
         data object HardwareUnavailable: BiometricResult
         data object FeatureUnavailable: BiometricResult
-        data class AuthenticationError(val error: String): BiometricResult
+        data class AuthenticationError(val errorCode : Int, val error: String): BiometricResult
         data object AuthenticationFailed: BiometricResult
         data object AuthenticationSuccess: BiometricResult
         data object AuthenticationNotSet: BiometricResult

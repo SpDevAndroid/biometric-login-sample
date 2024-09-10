@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -84,6 +85,16 @@ class MainActivity : AppCompatActivity() {
                             Text(
                                 text = when(result) {
                                     is BiometricResult.AuthenticationError -> {
+                                        Log.d("TEST_BIOMETRIC", "BiometricResult.AuthenticationError : result : $result")
+
+                                        /** Error code 13 is negative button click code **/
+                                        if(result.errorCode == 13) {
+                                            promptManager.showWeakAuthPrompt(
+                                                title = "Sample prompt",
+                                                description = "Sample prompt description"
+                                            )
+                                        }
+
                                         result.error
                                     }
                                     BiometricResult.AuthenticationFailed -> {
